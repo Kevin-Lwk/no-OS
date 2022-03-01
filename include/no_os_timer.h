@@ -37,8 +37,8 @@
 * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 *******************************************************************************/
 
-#ifndef SRC_TIMER_H_
-#define SRC_TIMER_H_
+#ifndef _NO_OS_SRC_TIMER_H_
+#define _NO_OS_SRC_TIMER_H_
 
 /******************************************************************************/
 /***************************** Include Files **********************************/
@@ -109,5 +109,5 @@ int32_t timer_count_clk_get(struct timer_desc *desc, uint32_t *freq_hz);
 /* Set the timer clock frequency. */
 int32_t timer_count_clk_set(struct timer_desc *desc, uint32_t freq_hz);
 
-#endif /* SRC_TIMER_H_ */
+#endif // _NO_OS_SRC_TIMER_H_
 
