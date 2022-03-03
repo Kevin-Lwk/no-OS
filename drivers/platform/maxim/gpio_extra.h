@@ -57,25 +57,20 @@ extern const struct gpio_platform_ops max_gpio_ops;
  */
 extern const struct irq_platform_ops max_gpio_irq_ops;
 
-/**
- * @struct gpio_irq_config
- * @brief maxim configuration descriptor for irq operations
- */
-struct gpio_irq_config {
-	enum irq_trig_level mode;
+enum max_pad_config {
+	NO_OS_PAD_NONE,
+	/** Strong pull up */
+	NO_OS_PAD_PULL_UP,
+	/** Strong pull down */
+	NO_OS_PAD_PULL_DOWN,
 };
 
 struct max_gpio_init_param {
 	/** Input/Output */
 	uint32_t mode;
 	/** Pull_up/Pull_down  */
-	uint32_t pull;
+	enum max_pad_config pull;
 	uint32_t port;
-};
-
-struct max_gpio_irq_param {
-	struct irq_ctrl_desc *parent;
-	struct gpio_desc *desc;
 };
 
 #endif

@@ -59,13 +59,16 @@ static struct callback_desc *gpio_callback[N_PORTS][N_PINS];
 static void _gpio_irq(uint8_t port)
 {
 	uint32_t pin;
+	uint32_t shifted = 0;
 	mxc_gpio_regs_t *gpio_regs = MXC_GPIO_GET_GPIO(port);
 	uint32_t stat_reg = gpio_regs->int_stat;
 	/** Clear interrupt flags for the current port*/
 	gpio_regs->int_clr = stat_reg;
 	while(stat_reg) {
 		pin = find_first_set_bit(stat_reg);
+		pin += shifted;
 		if (!gpio_callback[port][pin]) {
+			shifted += pin + 1;
 			stat_reg >>= pin + 1;
 			continue;
 		}
@@ -73,6 +76,7 @@ static void _gpio_irq(uint8_t port)
 		gpio_callback[port][pin]->callback(ctx, pin, NULL);
 
 		stat_reg >>= pin + 1;
+		shifted += pin + 1;
 	}
 }
 
@@ -80,6 +84,24 @@ void GPIO0_IRQHandler()
 {
 	_gpio_irq(0);
 }
+#ifdef MXC_GPIO1
+void GPIO1_IRQHandler()
+{
+	_gpio_irq(1);
+}
+#endif
+#ifdef MXC_GPIO2
+void GPIO2_IRQHandler()
+{
+	_gpio_irq(2);
+}
+#endif
+#ifdef MXC_GPIO3
+void GPIO3_IRQHandler()
+{
+	_gpio_irq(3);
+}
+#endif
 
 /**
  * @brief Obtain the GPIO decriptor.
@@ -110,7 +132,22 @@ int32_t max_gpio_get(struct gpio_desc **desc,
 	}
 
 	pextra = param->extra;
-	m_pad = (pextra->pull == 0) ? MXC_GPIO_PAD_PULL_UP :  MXC_GPIO_PAD_PULL_DOWN;
+
+	switch(pextra->pull) {
+	case NO_OS_PAD_NONE:
+		m_pad = MXC_GPIO_PAD_NONE;
+		break;
+	case NO_OS_PAD_PULL_UP:
+		m_pad = MXC_GPIO_PAD_PULL_UP;
+		break;
+	case NO_OS_PAD_PULL_DOWN:
+		m_pad = MXC_GPIO_PAD_PULL_DOWN;
+		break;
+	default:
+		ret = -EINVAL;
+		goto free_g_cfg;
+	}
+
 	m_func = (pextra->mode == 0) ? MXC_GPIO_FUNC_IN : MXC_GPIO_FUNC_OUT;
 
 	if (pextra->port >= N_PORTS) {
@@ -128,7 +165,11 @@ int32_t max_gpio_get(struct gpio_desc **desc,
 	descriptor->extra = g_cfg;
 
 	MXC_GPIO_Init(pextra->port);
-	MXC_GPIO_Config(descriptor->extra);
+	ret = MXC_GPIO_Config(descriptor->extra);
+	if (ret) {
+		ret = -EINVAL;
+		goto free_g_cfg;
+	}
 
 	*desc = descriptor;
 
@@ -211,8 +252,8 @@ int32_t max_gpio_direction_output(struct gpio_desc *desc, uint8_t value)
 	if (!desc || desc->number >= N_PINS || value > GPIO_HIGH_Z)
 		return -EINVAL;
 
-	gpio_regs = MXC_GPIO_GET_GPIO(desc->number);
 	maxim_extra = desc->extra;
+	gpio_regs = maxim_extra->port;
 	maxim_extra->func = MXC_GPIO_FUNC_OUT;
 	MXC_GPIO_Config(maxim_extra);
 
@@ -278,8 +319,7 @@ int32_t max_gpio_set_value(struct gpio_desc *desc, uint8_t value)
 		return -EINVAL;
 
 	max_gpio_cfg = desc->extra;
-	gpio_regs = MXC_GPIO_GET_GPIO(max_gpio_cfg->port);
-
+	gpio_regs = max_gpio_cfg->port;
 	switch(value) {
 	case GPIO_LOW:
 		MXC_GPIO_OutClr(gpio_regs, BIT(desc->number));
@@ -319,17 +359,14 @@ int32_t max_gpio_get_value(struct gpio_desc *desc, uint8_t *value)
 		return -EINVAL;
 
 	max_gpio_cfg = desc->extra;
-	gpio_regs = MXC_GPIO_GET_GPIO(max_gpio_cfg->port);
-
-	if (!max_gpio_cfg)
-		return -EINVAL;
+	gpio_regs = max_gpio_cfg->port;
 
 	if (!(gpio_regs->en0 & BIT(desc->number)))
 		*value = GPIO_HIGH_Z;
 	else if (max_gpio_cfg->func == MXC_GPIO_FUNC_IN)
-		*value = MXC_GPIO_InGet(gpio_regs, BIT(desc->number));
+		*value = MXC_GPIO_InGet(gpio_regs, BIT(desc->number)) >> desc->number;
 	else
-		*value = MXC_GPIO_OutGet(gpio_regs, BIT(desc->number));
+		*value = MXC_GPIO_OutGet(gpio_regs, BIT(desc->number)) >> desc->number;
 
 	return 0;
 }
@@ -424,7 +461,7 @@ static int32_t max_gpio_irq_set_trigger_level(struct irq_ctrl_desc *desc,
 		/** Select level triggered interrupt mode */
 		gpio_regs->int_mod &= ~(BIT(irq_id));
 		/** Select level high trigger condition */
-		//gpio_regs->int_pol |= BIT(irq_id);
+		gpio_regs->int_pol |= BIT(irq_id);
 		break;
 	case IRQ_LEVEL_LOW:
 		/** Select level triggered interrupt mode */
@@ -466,14 +503,12 @@ static int32_t max_gpio_register_callback(struct irq_ctrl_desc *desc,
 	mxc_gpio_cfg_t *max_gpio_cfg;
 	enum irq_trig_level trig_level;
 
-	if (!desc || !desc->extra || !callback_desc || !callback_desc->config
-	    || irq_id >= N_PINS)
+	if (!desc || !desc->extra || !callback_desc || irq_id >= N_PINS)
 		return -EINVAL;
 
 	g_irq = callback_desc->config;
 	g_desc = desc->extra;
 	max_gpio_cfg = g_desc->extra;
-	trig_level = g_irq->mode;
 	port_id = MXC_GPIO_GET_IDX(max_gpio_cfg->port);
 
 	descriptor = calloc(1, sizeof(*descriptor));
@@ -481,12 +516,6 @@ static int32_t max_gpio_register_callback(struct irq_ctrl_desc *desc,
 		return -ENOMEM;
 
 	ret = max_gpio_direction_input(g_desc);
-	if (ret) {
-		free(descriptor);
-		return ret;
-	}
-
-	ret = irq_trigger_level_set(desc, irq_id, trig_level);
 	if (ret) {
 		free(descriptor);
 		return ret;
