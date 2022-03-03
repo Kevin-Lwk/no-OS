@@ -40,8 +40,6 @@
 #define IRQ_MAXIM_EXTRA_H
 
 #include "max32660.h"
-#include "gpio.h"
-#include "gpio_extra.h"
 #include "no-os/irq.h"
 
 /**
@@ -59,6 +57,6 @@ enum irq_id {
 /**
  * @brief maxim platform specific irq platform ops structure
  */
-extern const struct irq_platform_ops irq_ops;
+extern const struct irq_platform_ops max_irq_ops;
 
 #endif
