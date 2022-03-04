@@ -12,6 +12,12 @@
 #include "stm32_uart.h"
 #include "stm32_uart_stdio.h"
 #include "adxl355.h"
+#ifdef IIO_SUPPORT
+#include "app_config.h"
+#include "parameters.h"
+#include "iio_app.h"
+#include "iio_adxl355.h"
+#endif
 
 #define SPI_DEVICE_ID	 1
 #define SPI_CS			15
@@ -19,13 +25,15 @@
 
 int main ()
 {
+#ifdef IIO_SUPPORT
+	struct adxl355_iio_dev *adxl355_iio_desc;
+	struct adxl355_iio_init_param adxl355_init_par;
+#else
 	struct uart_desc *uart;
 	struct adxl355_dev *adxl355;
+#endif
 
 	int ret;
-	HAL_Init();
-	SystemClock_Config();
-
 	struct stm32_spi_init_param xsip  = {
 		.chip_select_port = SPI_CS_PORT,
 		.get_input_clock = HAL_RCC_GetPCLK1Freq,
@@ -46,6 +54,9 @@ int main ()
 		.comm_type = ADXL355_SPI_COMM,
 	};
 
+#ifdef IIO_SUPPORT
+	adxl355_init_par.adxl355_initial = &init_data_adxl355;
+#else
 	struct stm32_uart_init_param xuip = {
 		.mode = UART_MODE_TX_RX,
 		.timeout = 10,
@@ -58,7 +69,28 @@ int main ()
 		.stop = UART_STOP_1_BIT,
 		.extra = &xuip,
 	};
+#endif
 
+	HAL_Init();
+	SystemClock_Config();
+
+#ifdef IIO_SUPPORT
+	ret = adxl355_iio_init(&adxl355_iio_desc, &adxl355_init_par);
+	if (ret != SUCCESS)
+		return ret;
+
+	struct iio_app_device iio_devices[] = {
+		{
+			.name = "adxl355_demo",
+			.dev = adxl355_iio_desc,
+			.dev_descriptor = adxl355_iio_desc->iio_dev,
+			.read_buff = NULL,
+			.write_buff = NULL
+		}
+	};
+
+	return iio_app_run(iio_devices, ARRAY_SIZE(iio_devices));
+#else
 	ret = uart_init(&uart, &uip);
 	if (ret < 0)
 		goto error;
@@ -136,4 +168,6 @@ int main ()
 error:
 	pr_info("Error!\n");
 	return 0;
+#endif
 }
+
