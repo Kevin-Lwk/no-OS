@@ -128,7 +128,7 @@ struct iio_buffer_priv {
 	/* Field visible by user */
 	struct iio_buffer	public;
 	/** Buffer to read or write data. A reference will be found in buffer */
-	struct circular_buffer	cb;
+	struct no_os_circular_buffer	cb;
 	/* Buffer provide by user. */
 	int8_t			*raw_buf;
 	/* Length of raw_buf */
@@ -173,7 +173,7 @@ struct iio_desc {
 	int (*recv)(void *conn, uint8_t *buf, uint32_t len);
 	int (*send)(void *conn, uint8_t *buf, uint32_t len);
 	/* FIFO for socket descriptors */
-	struct circular_buffer	*conns;
+	struct no_os_circular_buffer	*conns;
 #ifdef ENABLE_IIO_NETWORK
 	struct tcp_socket_desc	*current_sock;
 	/* Instance of server socket */
@@ -189,23 +189,23 @@ static inline int32_t _pop_conn(struct iio_desc *desc, uint32_t *conn_id)
 {
 	uint32_t size;
 
-	cb_size(desc->conns, &size);
+	no_os_cb_size(desc->conns, &size);
 	if (size < sizeof(uint32_t))
 		return -EAGAIN;
 
-	return cb_read(desc->conns, conn_id, sizeof(*conn_id));
+	return no_os_cb_read(desc->conns, conn_id, sizeof(*conn_id));
 }
 
 static inline int32_t _push_conn(struct iio_desc *desc, uint32_t conn_id)
 {
-	return cb_write(desc->conns, &conn_id, sizeof(conn_id));
+	return no_os_cb_write(desc->conns, &conn_id, sizeof(conn_id));
 }
 
 static inline int32_t _nb_active_conns(struct iio_desc *desc)
 {
 	uint32_t size;
 
-	cb_size(desc->conns, &size);
+	no_os_cb_size(desc->conns, &size);
 
 	return size / sizeof(uint32_t);
 }
@@ -313,7 +313,7 @@ static int iio_read_all_attr(struct attr_fun_params *params,
 						 local_buf, params->len,
 						 params->ch_info,
 						 attributes[i].priv);
-		if (IS_ERR_VALUE(attr_length))
+		if (NO_OS_IS_ERR_VALUE(attr_length))
 			attr_length = snprintf(local_buf, params->len, "%d",
 					       attr_length);
 
@@ -429,7 +429,7 @@ static int32_t debug_reg_read(struct iio_dev_priv *dev, char *buf, uint32_t len)
 	ret = dev->dev_descriptor->debug_reg_read(dev->dev_instance,
 			dev->active_reg_addr,
 			&value);
-	if (IS_ERR_VALUE(ret))
+	if (NO_OS_IS_ERR_VALUE(ret))
 		return ret;
 
 	return snprintf(buf, len, "%"PRIu32"", value);
@@ -459,7 +459,7 @@ static int32_t debug_reg_write(struct iio_dev_priv *dev, const char *buf,
 		/* Write register */
 		ret = dev->dev_descriptor->debug_reg_write(dev->dev_instance,
 				addr, value);
-		if (IS_ERR_VALUE(ret))
+		if (NO_OS_IS_ERR_VALUE(ret))
 			return ret;
 	} else {
 		nb_filled = sscanf(buf, "%"PRIu32, &addr);
@@ -797,8 +797,8 @@ static int iio_open_dev(struct iiod_ctx *ctx, const char *device,
 		dev->buffer.allocated = 1;
 	}
 
-	ret = cb_cfg(&dev->buffer.cb, buf, dev->buffer.public.size);
-	if (IS_ERR_VALUE(ret)) {
+	ret = no_os_cb_cfg(&dev->buffer.cb, buf, dev->buffer.public.size);
+	if (NO_OS_IS_ERR_VALUE(ret)) {
 		if (dev->buffer.allocated) {
 			free(dev->buffer.cb.buff);
 			dev->buffer.allocated = 0;
@@ -809,7 +809,7 @@ static int iio_open_dev(struct iiod_ctx *ctx, const char *device,
 
 	if (dev->dev_descriptor->pre_enable) {
 		ret = dev->dev_descriptor->pre_enable(dev->dev_instance, mask);
-		if (IS_ERR_VALUE(ret) && dev->buffer.allocated) {
+		if (NO_OS_IS_ERR_VALUE(ret) && dev->buffer.allocated) {
 			free(dev->buffer.cb.buff);
 			dev->buffer.allocated = 0;
 		}
@@ -870,7 +870,7 @@ static int iio_call_submit(struct iiod_ctx *ctx, const char *device,
 		struct iio_buffer *buffer = &dev->buffer.public;
 
 		ret = iio_buffer_get_block(buffer, &buff);
-		if (IS_ERR_VALUE(ret))
+		if (NO_OS_IS_ERR_VALUE(ret))
 			return ret;
 
 		nb_scans = buffer->size / buffer->bytes_per_scan;
@@ -880,7 +880,7 @@ static int iio_call_submit(struct iiod_ctx *ctx, const char *device,
 		else
 			ret = dev->dev_descriptor->write_dev(dev->dev_instance,
 							     buff, nb_scans);
-		if (IS_ERR_VALUE(ret))
+		if (NO_OS_IS_ERR_VALUE(ret))
 			return ret;
 
 		return iio_buffer_block_done(buffer);
@@ -921,8 +921,8 @@ static int iio_read_buffer(struct iiod_ctx *ctx, const char *device, char *buf,
 	if (!dev || !dev->buffer.initalized)
 		return -EINVAL;
 
-	ret = cb_size(&dev->buffer.cb, &size);
-	if (IS_ERR_VALUE(ret))
+	ret = no_os_cb_size(&dev->buffer.cb, &size);
+	if (NO_OS_IS_ERR_VALUE(ret))
 		return ret;
 
 	bytes = min(size, bytes);
@@ -930,8 +930,8 @@ static int iio_read_buffer(struct iiod_ctx *ctx, const char *device, char *buf,
 		return -EAGAIN;
 
 
-	ret = cb_read(&dev->buffer.cb, buf, bytes);
-	if (IS_ERR_VALUE(ret))
+	ret = no_os_cb_read(&dev->buffer.cb, buf, bytes);
+	if (NO_OS_IS_ERR_VALUE(ret))
 		return ret;
 
 	return bytes;
@@ -961,14 +961,14 @@ static int iio_write_buffer(struct iiod_ctx *ctx, const char *device, char *buf,
 	if (!dev || !dev->buffer.initalized)
 		return -EINVAL;
 
-	ret = cb_size(&dev->buffer.cb, &size);
-	if (IS_ERR_VALUE(ret))
+	ret = no_os_cb_size(&dev->buffer.cb, &size);
+	if (NO_OS_IS_ERR_VALUE(ret))
 		return ret;
 
 	available = dev->buffer.public.size - size;
 	bytes = min(available, bytes);
-	ret = cb_write(&dev->buffer.cb, buf, bytes);
-	if (IS_ERR_VALUE(ret))
+	ret = no_os_cb_write(&dev->buffer.cb, buf, bytes);
+	if (NO_OS_IS_ERR_VALUE(ret))
 		return ret;
 
 	return bytes;
@@ -983,17 +983,17 @@ int iio_buffer_get_block(struct iio_buffer *buffer, void **addr)
 		return -EINVAL;
 
 	if (buffer->dir == IIO_DIRECTION_INPUT)
-		ret = cb_prepare_async_write(buffer->buf, buffer->size, addr,
-					     &size);
+		ret = no_os_cb_prepare_async_write(buffer->buf, buffer->size, addr,
+						   &size);
 	else
-		ret = cb_prepare_async_read(buffer->buf, buffer->size, addr,
-					    &size);
-	if (IS_ERR_VALUE(ret))
+		ret = no_os_cb_prepare_async_read(buffer->buf, buffer->size, addr,
+						  &size);
+	if (NO_OS_IS_ERR_VALUE(ret))
 		/* ToDo: Implement async cancel. And cancel transaction here.
 		 * Also cancel may be needed for a posible future abort callback
 		 * If this is not done, after the first error all future calls
 		 * to async will fail.
-		 * An other option will be to call cb_cfg but then data is lost
+		 * An other option will be to call no_os_cb_cfg but then data is lost
 		 */
 		return ret;
 
@@ -1013,9 +1013,9 @@ int iio_buffer_block_done(struct iio_buffer *buffer)
 		return -EINVAL;
 
 	if (buffer->dir == IIO_DIRECTION_INPUT)
-		return cb_end_async_write(buffer->buf);
+		return no_os_cb_end_async_write(buffer->buf);
 
-	return cb_end_async_read(buffer->buf);
+	return no_os_cb_end_async_read(buffer->buf);
 }
 
 /* Write to buffer iio_buffer.bytes_per_scan bytes from data */
@@ -1024,7 +1024,7 @@ int iio_buffer_push_scan(struct iio_buffer *buffer, void *data)
 	if (!buffer)
 		return -EINVAL;
 
-	return cb_write(buffer->buf, data, buffer->bytes_per_scan);
+	return no_os_cb_write(buffer->buf, data, buffer->bytes_per_scan);
 }
 
 /* Read from buffer iio_buffer.bytes_per_scan bytes into data */
@@ -1033,7 +1033,7 @@ int iio_buffer_pop_scan(struct iio_buffer *buffer, void *data)
 	if (!buffer)
 		return -EINVAL;
 
-	return cb_read(buffer->buf, data, buffer->bytes_per_scan);
+	return no_os_cb_read(buffer->buf, data, buffer->bytes_per_scan);
 }
 
 #ifdef ENABLE_IIO_NETWORK
@@ -1046,7 +1046,7 @@ static int32_t accept_network_clients(struct iio_desc *desc)
 	do {
 		uint32_t id;
 		ret = socket_accept(desc->server, &sock);
-		if (IS_ERR_VALUE(ret))
+		if (NO_OS_IS_ERR_VALUE(ret))
 			return ret;
 
 		data.conn = sock;
@@ -1054,11 +1054,11 @@ static int32_t accept_network_clients(struct iio_desc *desc)
 		data.len = IIOD_CONN_BUFFER_SIZE;
 
 		ret = iiod_conn_add(desc->iiod, &data, &id);
-		if (IS_ERR_VALUE(ret))
+		if (NO_OS_IS_ERR_VALUE(ret))
 			return ret;
 
 		ret = _push_conn(desc, id);
-		if (IS_ERR_VALUE(ret))
+		if (NO_OS_IS_ERR_VALUE(ret))
 			return ret;
 	} while (true);
 
@@ -1080,13 +1080,13 @@ int iio_step(struct iio_desc *desc)
 #ifdef ENABLE_IIO_NETWORK
 	if (desc->server) {
 		ret = accept_network_clients(desc);
-		if (IS_ERR_VALUE(ret) && ret != -EAGAIN)
+		if (NO_OS_IS_ERR_VALUE(ret) && ret != -EAGAIN)
 			return ret;
 	}
 #endif
 
 	ret = _pop_conn(desc, &conn_id);
-	if (IS_ERR_VALUE(ret))
+	if (NO_OS_IS_ERR_VALUE(ret))
 		return ret;
 
 	ret = iiod_conn_step(desc->iiod, conn_id);
@@ -1346,7 +1346,7 @@ static int32_t iio_init_devs(struct iio_desc *desc,
 	}
 
 	ret = iio_init_xml(desc);
-	if (IS_ERR_VALUE(ret))
+	if (NO_OS_IS_ERR_VALUE(ret))
 		free(desc->devs);
 
 	return ret;
@@ -1375,7 +1375,7 @@ int iio_init(struct iio_desc **desc, struct iio_init_param *init_param)
 		return -ENOMEM;
 
 	ret = iio_init_devs(ldesc, init_param->devs, init_param->nb_devs);
-	if (IS_ERR_VALUE(ret))
+	if (NO_OS_IS_ERR_VALUE(ret))
 		goto free_desc;
 
 	/* device operations */
@@ -1397,12 +1397,12 @@ int iio_init(struct iio_desc **desc, struct iio_init_param *init_param)
 	iiod_param.xml_len = ldesc->xml_size;
 
 	ret = iiod_init(&ldesc->iiod, &iiod_param);
-	if (IS_ERR_VALUE(ret))
+	if (NO_OS_IS_ERR_VALUE(ret))
 		goto free_devs;
 
-	ret = cb_init(&ldesc->conns,
-		      sizeof(uint32_t) * (IIOD_MAX_CONNECTIONS + 1));
-	if (IS_ERR_VALUE(ret))
+	ret = no_os_cb_init(&ldesc->conns,
+			    sizeof(uint32_t) * (IIOD_MAX_CONNECTIONS + 1));
+	if (NO_OS_IS_ERR_VALUE(ret))
 		goto free_iiod;
 
 	if (init_param->phy_type == USE_UART) {
@@ -1416,7 +1416,7 @@ int iio_init(struct iio_desc **desc, struct iio_init_param *init_param)
 			.len = sizeof(uart_buff)
 		};
 		ret = iiod_conn_add(ldesc->iiod, &data, &conn_id);
-		if (IS_ERR_VALUE(ret))
+		if (NO_OS_IS_ERR_VALUE(ret))
 			goto free_conns;
 		_push_conn(ldesc, conn_id);
 	}
@@ -1426,13 +1426,13 @@ int iio_init(struct iio_desc **desc, struct iio_init_param *init_param)
 		ldesc->recv = (int (*)())socket_recv;
 		ret = socket_init(&ldesc->server,
 				  init_param->tcp_socket_init_param);
-		if (IS_ERR_VALUE(ret))
+		if (NO_OS_IS_ERR_VALUE(ret))
 			goto free_conns;
 		ret = socket_bind(ldesc->server, IIOD_PORT);
-		if (IS_ERR_VALUE(ret))
+		if (NO_OS_IS_ERR_VALUE(ret))
 			goto free_pylink;
 		ret = socket_listen(ldesc->server, MAX_BACKLOG);
-		if (IS_ERR_VALUE(ret))
+		if (NO_OS_IS_ERR_VALUE(ret))
 			goto free_pylink;
 	}
 #endif
@@ -1450,7 +1450,7 @@ free_pylink:
 	socket_remove(ldesc->server);
 #endif
 free_conns:
-	cb_remove(ldesc->conns);
+	no_os_cb_remove(ldesc->conns);
 free_iiod:
 	iiod_remove(ldesc->iiod);
 free_devs:
@@ -1475,7 +1475,7 @@ int iio_remove(struct iio_desc *desc)
 #ifdef ENABLE_IIO_NETWORK
 	socket_remove(desc->server);
 #endif
-	cb_remove(desc->conns);
+	no_os_cb_remove(desc->conns);
 	iiod_remove(desc->iiod);
 	free(desc->devs);
 	free(desc->xml_desc);
