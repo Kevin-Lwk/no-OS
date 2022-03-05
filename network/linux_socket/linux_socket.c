@@ -43,6 +43,10 @@
 
 #ifdef LINUX_PLATFORM
 
+#ifndef _GNU_SOURCE
+#define _GNU_SOURCE
+#endif
+
 #include "linux_socket.h"
 
 #include <stdlib.h>
